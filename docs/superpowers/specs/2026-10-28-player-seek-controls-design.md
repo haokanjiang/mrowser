@@ -163,9 +163,27 @@ repeat, then ~50ms). A Handler owns the timing, as `CursorLayout` does for the B
 | `ACTION_UP`, long press not entered | Short press: `seekTo(position ± amount)`, show nothing |
 | `ACTION_UP`, long press entered | Stop the ticker, scrubbing mode off, commit, 3s hide |
 
-Interception is conditional: left/right are taken **only when the progress bar holds focus, or
-the controls are hidden** (nothing in the controller has focus). With focus on the gear they fall
-through to normal focus movement, or the gear would be unreachable.
+Interception is conditional on **focus**, through the pure `SeekGesture.ownsKey(controlsVisible,
+progressBarFocused)`, shared by left/right and OK: the keys are the player's when the progress bar
+holds focus, and when the controls are hidden (nothing in the controller has focus). With focus on
+the gear they fall through — left/right to focus movement, or the gear would be unreachable, and OK
+to its menu.
+
+**Not on visibility alone.** The controls being up does not mean a button has focus: a hold reveals
+them and seats focus back on the bar. Gating OK on `controlsVisible` therefore handed it to a
+focused `DefaultTimeBar`, whose `KEYCODE_DPAD_CENTER` only commits a drag that the key path never
+starts (`DefaultTimeBar.java:663-669`) — so OK did nothing at all in a state a hold reaches
+routinely.
+
+For a seek, `ownsKey` gates the **start** only; a gesture in flight runs to its release, since
+revealing the controls moves focus and re-testing it would leave the ramp running with scrubbing
+mode on.
+
+**The media keys stay media3's.** `dispatchMediaKeyEvent` (`PlayerControlView.java:1791-1834`) acts
+on `ACTION_DOWN` and already separates them — `KEYCODE_MEDIA_PLAY` plays, `KEYCODE_MEDIA_PAUSE`
+pauses, `KEYCODE_MEDIA_PLAY_PAUSE` toggles via `Util.handlePlayPauseButtonAction`, which also
+accounts for the playback suppression scrubbing mode causes. Handling them here too toggled twice
+per press, once under each, and the two cancelled out.
 
 ### The ramp
 

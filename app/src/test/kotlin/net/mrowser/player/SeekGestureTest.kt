@@ -72,23 +72,26 @@ class SeekGestureTest {
         )
     }
 
-    @Test fun `a gesture may start while the controls are hidden`() {
-        assertTrue(SeekGesture.canStart(controlsVisible = false, progressBarFocused = false))
+    @Test fun `the player owns its keys while the controls are hidden`() {
+        assertTrue(SeekGesture.ownsKey(controlsVisible = false, progressBarFocused = false))
     }
 
-    @Test fun `a gesture may start when the progress bar has focus`() {
-        assertTrue(SeekGesture.canStart(controlsVisible = true, progressBarFocused = true))
+    @Test fun `the player owns its keys when the progress bar has focus`() {
+        // The case visibility alone got wrong: a hold reveals the controls and seats focus back
+        // on the bar, where OK must still pause rather than reach the bar's own commit-a-drag
+        // handler, which the key path never starts.
+        assertTrue(SeekGesture.ownsKey(controlsVisible = true, progressBarFocused = true))
     }
 
-    @Test fun `a gesture does not start when another control has focus`() {
-        // The settings gear must stay reachable with left/right.
-        assertFalse(SeekGesture.canStart(controlsVisible = true, progressBarFocused = false))
+    @Test fun `a focused control keeps its own keys`() {
+        // The settings gear must stay reachable with left/right, and OK must open its menu.
+        assertFalse(SeekGesture.ownsKey(controlsVisible = true, progressBarFocused = false))
     }
 
     @Test fun `a hold in flight is finished whatever focus did meanwhile`() {
         // Revealing the controls mid-hold moves focus; the release must still end the ramp, so
-        // its decision is independent of canStart.
-        assertFalse(SeekGesture.canStart(controlsVisible = true, progressBarFocused = false))
+        // its decision is independent of ownsKey.
+        assertFalse(SeekGesture.ownsKey(controlsVisible = true, progressBarFocused = false))
         assertEquals(
             Decision.EndHold,
             SeekGesture.decide(ACTION_UP, sameKeyDown = true, holding = true)

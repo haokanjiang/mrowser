@@ -62,16 +62,22 @@ object SeekGesture {
         }
 
     /**
-     * Whether a **new** gesture may start here.
+     * Whether the player owns this key press, rather than a focused control.
      *
-     * Allowed when the progress bar holds focus, and when the controls are hidden (nothing in
-     * them has focus). With focus anywhere else — the settings gear — the keys fall through to
-     * normal focus movement, or the gear could never be reached.
+     * Owned when the controls are hidden (nothing in them has focus) and when the **progress
+     * bar** holds focus — the bar is the player's own surface, so left/right seek on it and OK
+     * is play/pause. With focus anywhere else, the gear, the keys belong to that button: left
+     * and right must move focus or the gear could never be reached, and OK must open its menu.
      *
-     * This gates starting only. A gesture already in flight always runs to its release, because
-     * revealing the controls mid-hold moves focus: re-testing this on the release could drop it
-     * and leave the ramp running with scrubbing mode still on.
+     * Deliberately **not** keyed on visibility alone. The controls being up does not mean a
+     * button has focus — a hold reveals them and seats focus back on the bar — so gating on
+     * `controlsVisible` would hand OK to a focused progress bar, whose own `KEYCODE_DPAD_CENTER`
+     * only commits a drag that the key path never starts. OK would do nothing at all.
+     *
+     * For a seek this gates **starting** only. A gesture in flight always runs to its release,
+     * because revealing the controls mid-hold moves focus: re-testing this on the release could
+     * drop it and leave the ramp running with scrubbing mode still on.
      */
-    fun canStart(controlsVisible: Boolean, progressBarFocused: Boolean): Boolean =
+    fun ownsKey(controlsVisible: Boolean, progressBarFocused: Boolean): Boolean =
         !controlsVisible || progressBarFocused
 }

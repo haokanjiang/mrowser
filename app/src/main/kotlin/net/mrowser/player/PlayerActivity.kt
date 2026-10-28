@@ -202,26 +202,21 @@ class PlayerActivity : Activity() {
         } else if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
             // Ownership is decided on the press, not the release: DPAD_CENTER is one of
             // PlayerView's "isDpadKey", so letting the press through would reveal the controls,
-            // and by the release they would be up — OK would never pause, only reveal. Taken
-            // only while they are hidden; with them up OK must still activate the focused
-            // button (the gear).
+            // and by the release they would be up — OK would never pause, only reveal.
             if (event.action == KeyEvent.ACTION_DOWN) {
-                if (event.repeatCount == 0) okIsOurs = !controlsVisible()
+                if (event.repeatCount == 0) okIsOurs = playerOwnsKey()
                 if (okIsOurs) return true // Auto-repeats included: a held OK must not re-toggle.
             } else if (event.action == KeyEvent.ACTION_UP && okIsOurs) {
                 okIsOurs = false
                 togglePlayback()
                 return true
             }
-        } else if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
-            code == KeyEvent.KEYCODE_MEDIA_PLAY ||
-            code == KeyEvent.KEYCODE_MEDIA_PAUSE
-        ) {
-            if (event.action == KeyEvent.ACTION_UP) {
-                togglePlayback()
-                return true
-            }
         }
+        // The media keys are media3's: dispatchMediaKeyEvent already acts on ACTION_DOWN and
+        // separates them properly — PLAY plays, PAUSE pauses, PLAY_PAUSE toggles (through
+        // Util.handlePlayPauseButtonAction, which also accounts for playback suppression, as
+        // scrubbing mode causes). Handling them here as well toggled twice per press — once on
+        // its ACTION_DOWN under media3, once on our ACTION_UP — and the two cancelled out.
         return super.dispatchKeyEvent(event)
     }
 
@@ -232,8 +227,8 @@ class PlayerActivity : Activity() {
 
         return when (SeekGesture.decide(event.action, sameKeyDown, seekHolding)) {
             SeekGesture.Decision.ArmHold -> {
-                // The focus gate applies to starting only — see SeekGesture.canStart.
-                if (!SeekGesture.canStart(controlsVisible(), timeBar?.isFocused == true)) {
+                // The focus gate applies to starting only — see SeekGesture.ownsKey.
+                if (!playerOwnsKey()) {
                     false
                 } else {
                     // The other direction was held: drop that gesture and start this one.
@@ -315,6 +310,10 @@ class PlayerActivity : Activity() {
     }
 
     private fun controlsVisible(): Boolean = playerView?.isControllerFullyVisible == true
+
+    /** Whether this key is the player's rather than a focused control's — see SeekGesture. */
+    private fun playerOwnsKey(): Boolean =
+        SeekGesture.ownsKey(controlsVisible(), timeBar?.isFocused == true)
 
     /** Seat focus on the time bar unless something in the controls already has it (the gear,
      *  reached with up/down, must keep focus while the controls stay up). */
