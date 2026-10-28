@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The player's controls, replacing media3's default layout via app:controller_layout_id.
 
-     Gone from the stock layout: exo_controls_background (the scrim — it hides the picture you
-     are navigating by), the whole exo_center_controls row (the arrow keys seek directly now, and
-     with one media item ⏭ is always disabled while ⏮ only jumps to 0:00), exo_fullscreen (a TV
-     is always fullscreen), and exo_vr / exo_shuffle / exo_repeat_toggle / exo_overflow_*.
-     exo_subtitle stays out too: the project renders subtitles itself, so its CC button lives in
-     the sub-sync capsule (see PlayerActivity).
+     This is media3's own stock layout with things removed, not a restyling: the time bar, the
+     position/duration labels and the settings gear keep media3's styles, sizes and colours.
+
+     Gone: exo_controls_background (the scrim), the whole exo_center_controls row (the arrow keys
+     seek directly now, and with one media item ⏭ is always disabled while ⏮ only jumps to
+     0:00), exo_fullscreen (a TV is always fullscreen), and exo_vr / exo_shuffle /
+     exo_repeat_toggle / exo_overflow_*. exo_subtitle stays out too: the project renders
+     subtitles itself, so its CC button lives in the sub-sync capsule (see PlayerActivity).
 
      PlayerControlView resolves every button with findViewById and null-checks it, so leaving one
-     out is supported, not a hack.
-
-     With no scrim the bar floats straight over the video, so this capsule carries its own
-     translucent fill — the sub-sync box's, for one visual language. -->
+     out is supported, not a hack. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -22,41 +21,32 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="24dp"
-        android:background="@drawable/sync_box_bg"
         android:orientation="vertical"
-        android:paddingStart="20dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="12dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="@dimen/exo_styled_bottom_bar_time_padding"
+        android:paddingEnd="@dimen/exo_styled_bottom_bar_time_padding"
         android:clipToPadding="false"
         android:clipChildren="false">
 
-        <!-- The time bar keeps its own focus: left/right on it are intercepted by the Activity
-             and seek, while on the gear they stay ordinary focus movement. -->
         <!-- @id, not @+id: PlayerControlView finds the bar with findViewById(R.id.exo_progress)
              against media3's own id, so this must reference that declared id rather than mint a
-             new one — a fresh id would leave it with no time bar at all. -->
-        <!-- The appearance is spelled out because a DefaultTimeBar declared in XML does not get
-             media3's ExoStyledControls.TimeBar style — that is applied only to the one it
-             creates itself from a placeholder — so without these it would silently fall back to
-             the class defaults (a 4dp centred bar, white fill). 5dp and a 14dp thumb read from
-             across a room; played is the brand red. -->
+             new one — a fresh id would leave it with no time bar at all.
+
+             The bar is focusable so left/right on it can be intercepted and seek; the sizes are
+             media3's ExoStyledControls.TimeBar values, restated because a DefaultTimeBar
+             declared in XML does not inherit that style (it is applied only to the bar media3
+             builds itself from a placeholder) and the class defaults differ. Colours are left
+             entirely to media3. -->
         <androidx.media3.ui.DefaultTimeBar
             android:id="@id/exo_progress"
             android:layout_width="match_parent"
-            android:layout_height="26dp"
+            android:layout_height="@dimen/exo_styled_progress_layout_height"
             android:focusable="true"
             android:nextFocusDown="@id/exo_settings"
-            app:bar_height="5dp"
-            app:bar_gravity="center"
-            app:touch_target_height="26dp"
-            app:scrubber_enabled_size="14dp"
-            app:scrubber_dragged_size="18dp"
-            app:played_color="@color/accent"
-            app:scrubber_color="@color/on_surface"
-            app:buffered_color="@color/time_bar_buffered"
-            app:unplayed_color="@color/time_bar_unplayed" />
+            app:bar_height="@dimen/exo_styled_progress_bar_height"
+            app:bar_gravity="bottom"
+            app:touch_target_height="@dimen/exo_styled_progress_touch_target_height"
+            app:scrubber_enabled_size="@dimen/exo_styled_progress_enabled_thumb_size"
+            app:scrubber_dragged_size="@dimen/exo_styled_progress_dragged_thumb_size" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -66,31 +56,28 @@
             android:clipToPadding="false"
             android:clipChildren="false">
 
-            <TextView
-                android:id="@id/exo_position"
+            <!-- media3's own exo_time group, verbatim: the separator carries no id there
+                 either, and importantForAccessibility keeps a running clock from being read
+                 out on every tick. -->
+            <LinearLayout
+                android:id="@id/exo_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFeatureSettings="tnum"
-                android:textColor="@color/on_surface"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:layout_gravity="center_vertical|start"
+                android:layoutDirection="ltr"
+                android:importantForAccessibility="noHideDescendants">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:text="@string/time_separator"
-                android:textColor="@color/text_dim"
-                android:textSize="14sp" />
+                <TextView
+                    android:id="@id/exo_position"
+                    style="@style/ExoStyledControls.TimeText.Position" />
 
-            <TextView
-                android:id="@id/exo_duration"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFeatureSettings="tnum"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                <TextView
+                    style="@style/ExoStyledControls.TimeText.Separator" />
+
+                <TextView
+                    android:id="@id/exo_duration"
+                    style="@style/ExoStyledControls.TimeText.Duration" />
+            </LinearLayout>
 
             <!-- Pushes the gear to the far end. -->
             <View
@@ -98,18 +85,13 @@
                 android:layout_height="1dp"
                 android:layout_weight="1" />
 
-            <!-- Focus is pinned the way the chrome bar pins its own: up returns to the bar, and
-                 left/right stay put rather than searching off to the sub-sync capsule across
-                 the screen. The gear is the only focusable control in this row. -->
+            <!-- media3's own settings button, styled by media3. Focus is pinned the way the
+                 chrome bar pins its own: up returns to the time bar, and left/right stay put
+                 rather than searching off to the sub-sync capsule across the screen. It is the
+                 only focusable control in this row. -->
             <ImageButton
                 android:id="@id/exo_settings"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="@drawable/bar_icon_bg"
-                android:scaleType="center"
-                android:src="@drawable/ic_settings"
-                android:tint="@color/bar_icon_tint"
-                android:contentDescription="@string/settings"
+                style="@style/ExoStyledControls.Button.Bottom.Settings"
                 android:nextFocusUp="@id/exo_progress"
                 android:nextFocusLeft="@id/exo_settings"
                 android:nextFocusRight="@id/exo_settings" />

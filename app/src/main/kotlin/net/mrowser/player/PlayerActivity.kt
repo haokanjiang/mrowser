@@ -36,6 +36,8 @@ import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.TrackSelectionDialogBuilder
 import net.mrowser.R
 import net.mrowser.data.JsonSettingsStore
+import net.mrowser.data.SeekSpeed
+import net.mrowser.data.Settings
 import net.mrowser.data.SettingsRepository
 import net.mrowser.stream.MediaMimeType
 import net.mrowser.stream.PlaybackRequest
@@ -60,11 +62,14 @@ class PlayerActivity : Activity() {
     private var holdForward = false
     private var lastControlsRefreshAt = 0L
 
+    /** The ramp's own target position, advanced per tick rather than read back from the player. */
+    private var rampPosition = 0L
+
     /** Whether the OK press in progress is a play/pause rather than a button activation. */
     private var okIsOurs = false
 
-    // Read-only here; the browser writes it. Read when a stream's tracks arrive, so a toggle
-    // flipped in Settings applies to the next stream with no restart.
+    // The same store the browser uses. Display-mode toggles are read when a stream's tracks
+    // arrive; the seek settings are read at every press and are also writable from the gear.
     private val settings: SettingsRepository by lazy { JsonSettingsStore(File(filesDir, "settings.json")) }
 
     // Display-mode matching. The matcher runs once per stream (this activity is one stream);
@@ -272,6 +277,8 @@ class PlayerActivity : Activity() {
         seekHolding = true
         holdStartedAt = System.currentTimeMillis()
         lastControlsRefreshAt = 0L
+        // The ramp advances this, not currentPosition — see rampTick.
+        rampPosition = p.currentPosition
         playerView?.showController()
         // Scrubbing mode is media3's own "many frequent seeks" path: it drops the audio track,
         // raises the codec operating rate and skips both the MediaCodec flush and the key-frame
@@ -285,7 +292,13 @@ class PlayerActivity : Activity() {
             val p = player ?: return
             val held = System.currentTimeMillis() - holdStartedAt
             val rate = SeekRamp.rateAt(held, settings.get().seekSpeed)
-            p.seekTo(SeekRamp.advance(p.currentPosition, p.duration, rate, TICK_MS, holdForward))
+            // Advance our own target, never re-read currentPosition: seekTo is asynchronous, so
+            // 50ms later the player is usually still loading the segment for the previous one
+            // and reports the old position. Each tick would then start over from roughly where
+            // the last began — the ramp crawled at the stream's load speed instead of its rate,
+            // whatever the preset said.
+            rampPosition = SeekRamp.advance(rampPosition, p.duration, rate, TICK_MS, holdForward)
+            p.seekTo(rampPosition)
             // The hide timer is driven by input PlayerView receives, and it never sees these
             // keys — so without this the controls would vanish mid-ramp on any hold past the
             // 3s timeout. showController() while fully visible only resets that timer (its
@@ -376,11 +389,21 @@ class PlayerActivity : Activity() {
         window.attributes = attrs
     }
 
+    /**
+     * The gear's menu. The seek rows are here as well as in the browser's Settings overlay
+     * because this is where a wrong step length is noticed — mid-film, with the remote in hand.
+     * Both write the same `settings.json`, and every seek reads it at use time, so a change
+     * applies to the very next press.
+     */
     private fun showSettings(p: ExoPlayer) {
+        val s = settings.get()
         val items = arrayOf(
             getString(R.string.track_video),
             getString(R.string.track_audio),
-            getString(R.string.speed)
+            getString(R.string.speed),
+            getString(R.string.seek_menu_forward, s.seekForwardSec),
+            getString(R.string.seek_menu_back, s.seekBackSec),
+            getString(R.string.seek_menu_speed, getString(seekSpeedLabelRes(s.seekSpeed)))
         )
         AlertDialog.Builder(this)
             .setTitle(R.string.settings)
@@ -389,9 +412,48 @@ class PlayerActivity : Activity() {
                     0 -> TrackSelectionDialogBuilder(this, items[0], p, C.TRACK_TYPE_VIDEO).build().show()
                     1 -> TrackSelectionDialogBuilder(this, items[1], p, C.TRACK_TYPE_AUDIO).build().show()
                     2 -> showSpeed(p)
+                    3 -> showSeekAmount(forward = true)
+                    4 -> showSeekAmount(forward = false)
+                    5 -> showSeekSpeed()
                 }
             }
             .show()
+    }
+
+    /** 5s…60s in 5s steps, the current value carrying the checked dot. */
+    private fun showSeekAmount(forward: Boolean) {
+        val options = (Settings.SEEK_MIN_SEC..Settings.SEEK_MAX_SEC step Settings.SEEK_STEP_SEC).toList()
+        val labels = options.map { getString(R.string.seek_seconds, it) }.toTypedArray()
+        val current = settings.get().let { if (forward) it.seekForwardSec else it.seekBackSec }
+        AlertDialog.Builder(this)
+            .setTitle(if (forward) R.string.seek_forward_title else R.string.seek_back_title)
+            .setSingleChoiceItems(labels, options.indexOf(current)) { dialog, which ->
+                val s = settings.get()
+                settings.update(
+                    if (forward) s.copy(seekForwardSec = options[which])
+                    else s.copy(seekBackSec = options[which])
+                )
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun showSeekSpeed() {
+        val options = listOf(SeekSpeed.GENTLE, SeekSpeed.STANDARD, SeekSpeed.AGGRESSIVE)
+        val labels = options.map { getString(seekSpeedLabelRes(it)) }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.seek_speed_title)
+            .setSingleChoiceItems(labels, options.indexOf(settings.get().seekSpeed)) { dialog, which ->
+                settings.update(settings.get().copy(seekSpeed = options[which]))
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun seekSpeedLabelRes(s: SeekSpeed): Int = when (s) {
+        SeekSpeed.GENTLE -> R.string.seek_speed_gentle
+        SeekSpeed.STANDARD -> R.string.seek_speed_standard
+        SeekSpeed.AGGRESSIVE -> R.string.seek_speed_aggressive
     }
 
     private fun showSubtitlePicker() {

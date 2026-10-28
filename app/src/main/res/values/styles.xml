@@ -85,29 +85,6 @@
         <item name="android:duplicateParentState">true</item>
     </style>
 
-    <!-- A stepper row's −/+ affordance: the row itself holds focus and left/right adjust it, so
-         these are indicators, not focus targets (a focusable control here would add two more
-         D-pad stops per row). 24dp to sit inside the 54dp row. -->
-    <style name="Mrowser.SettingsStepperIcon" parent="">
-        <item name="android:layout_width">24dp</item>
-        <item name="android:layout_height">24dp</item>
-        <item name="android:scaleType">center</item>
-        <item name="android:duplicateParentState">true</item>
-        <item name="android:tint">@color/value_text</item>
-    </style>
-
-    <!-- A stepper row's value: like a picker's, but no chevron (left/right, not a dialog), and
-         tabular figures so the row does not shift between "5s" and "60s". -->
-    <style name="Mrowser.SettingsStepperValue" parent="">
-        <item name="android:layout_width">46dp</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:textColor">@color/row_primary_text</item>
-        <item name="android:fontFeatureSettings">tnum</item>
-        <item name="android:gravity">center</item>
-        <item name="android:duplicateParentState">true</item>
-    </style>
-
     <!-- A picker row's value: grey text with a chevron after it. -->
     <style name="Mrowser.SettingsValue" parent="">
         <item name="android:layout_width">wrap_content</item>

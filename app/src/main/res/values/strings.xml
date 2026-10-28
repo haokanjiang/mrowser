@@ -28,8 +28,6 @@
     <string name="sub_sync_value">%1$+.1fs</string>
     <string name="sub_sync_earlier">Subtitles earlier</string>
     <string name="sub_sync_later">Subtitles later</string>
-    <!-- Between the position and the duration in the player's controls. -->
-    <string name="time_separator">/</string>
     <string name="history">History</string>
     <string name="clear_history">Clear all</string>
     <string name="history_empty">No history yet — sites you visit will show up here.</string>
@@ -48,14 +46,13 @@
     <string name="seek_back_title">Skip back</string>
     <string name="seek_speed_title">Hold-to-seek speed</string>
     <string name="seek_seconds">%1$ds</string>
-    <!-- A stepper row reads out as "Skip forward, 15s"; the row is the only focus target, and
-         left/right adjust it, so the value belongs in its description. -->
-    <string name="settings_stepper_state">%1$s, %2$s</string>
+    <!-- The player gear's rows carry their value, since a menu item shows no second line. -->
+    <string name="seek_menu_forward">Skip forward — %1$ds</string>
+    <string name="seek_menu_back">Skip back — %1$ds</string>
+    <string name="seek_menu_speed">Hold-to-seek speed — %1$s</string>
     <string name="seek_speed_gentle">Gentle</string>
     <string name="seek_speed_standard">Standard</string>
     <string name="seek_speed_aggressive">Aggressive</string>
-    <string name="seek_less">Less</string>
-    <string name="seek_more">More</string>
     <string name="settings_section_playback">Playback</string>
     <string name="settings_section_browsing">Browsing</string>
     <string name="settings_section_favorites">Favorites</string>

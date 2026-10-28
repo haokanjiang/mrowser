@@ -84,6 +84,30 @@ class SeekRampTest {
         assertEquals(0, back)
     }
 
+    @Test fun `advancing its own target covers the full rate, re-reading the player does not`() {
+        // The bug this pins: seekTo is asynchronous, so a tick that starts from the player's
+        // reported position begins again near where the last one did while the segment loads —
+        // the ramp then crawls at the stream's load speed instead of its own rate. Modelled
+        // here as a player whose position only catches up every 4th tick.
+        val duration = 60 * 60 * 1_000L
+        val start = duration / 2
+        val ticks = 40
+        val rate = 8
+
+        var own = start
+        repeat(ticks) { own = SeekRamp.advance(own, duration, rate, TICK, forward = true) }
+
+        var reported = start
+        var reread = start
+        repeat(ticks) { i ->
+            if (i % 4 == 0) reported = reread // the player caught up
+            reread = SeekRamp.advance(reported, duration, rate, TICK, forward = true)
+        }
+
+        assertEquals(start + rate * TICK * ticks, own)
+        assertTrue("re-reading should lag far behind", reread < own / 2 + start / 2)
+    }
+
     @Test fun `the ramp stays inside the stream over a whole hold`() {
         // Walk a 20-minute film with the fastest preset; the position must never leave the range.
         val duration = 20 * 60 * 1_000L

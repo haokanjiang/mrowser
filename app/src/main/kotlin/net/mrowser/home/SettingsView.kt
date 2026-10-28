@@ -12,11 +12,10 @@ import java.text.NumberFormat
 import net.mrowser.R
 import net.mrowser.adblock.BlockList
 import net.mrowser.data.CursorSpeed
-import net.mrowser.data.SeekSpeed
 import net.mrowser.data.Settings
 import net.mrowser.data.SettingsRepository
 
-/** Settings overlay: auto-open, display-mode matching, seek amounts and hold speed, pop-up
+/** Settings overlay: auto-open, display-mode matching, pop-up
  *  blocker, ad blocker, cursor speed, block-list info, favorites export/import. */
 class SettingsView @JvmOverloads constructor(
     context: Context,
@@ -26,16 +25,10 @@ class SettingsView @JvmOverloads constructor(
     private val autoOpenRow: View
     private val frameRateRow: View
     private val resolutionRow: View
-    private val seekForwardRow: View
-    private val seekBackRow: View
-    private val seekSpeedRow: View
     private val popupRow: View
     private val adsRow: View
     private val cursorRow: View
     private val listsRow: View
-    private val seekForwardValue: TextView
-    private val seekBackValue: TextView
-    private val seekSpeedValue: TextView
     private val cursorValue: TextView
     private val listsValue: TextView
 
@@ -51,16 +44,10 @@ class SettingsView @JvmOverloads constructor(
         autoOpenRow = findViewById(R.id.settingsAutoOpenRow)
         frameRateRow = findViewById(R.id.settingsFrameRateRow)
         resolutionRow = findViewById(R.id.settingsResolutionRow)
-        seekForwardRow = findViewById(R.id.settingsSeekForwardRow)
-        seekBackRow = findViewById(R.id.settingsSeekBackRow)
-        seekSpeedRow = findViewById(R.id.settingsSeekSpeedRow)
         popupRow = findViewById(R.id.settingsPopupRow)
         adsRow = findViewById(R.id.settingsAdsRow)
         cursorRow = findViewById(R.id.settingsCursorRow)
         listsRow = findViewById(R.id.settingsListsRow)
-        seekForwardValue = findViewById(R.id.settingsSeekForwardValue)
-        seekBackValue = findViewById(R.id.settingsSeekBackValue)
-        seekSpeedValue = findViewById(R.id.settingsSeekSpeedValue)
         cursorValue = findViewById(R.id.settingsCursorValue)
         listsValue = findViewById(R.id.settingsListsValue)
 
@@ -71,11 +58,6 @@ class SettingsView @JvmOverloads constructor(
         adsRow.setOnClickListener { toggleBlockAds() }
         cursorRow.setOnClickListener { pickCursor() }
         listsRow.setOnClickListener { showLists() }
-        seekSpeedRow.setOnClickListener { pickSeekSpeed() }
-        // Left/right adjust in place, so these rows have no click action — OK would have nothing
-        // to do, and a dialog would be a worse fit than nudging the value where you can see it.
-        stepper(seekForwardRow) { s, delta -> s.copy(seekForwardSec = stepped(s.seekForwardSec, delta)) }
-        stepper(seekBackRow) { s, delta -> s.copy(seekBackSec = stepped(s.seekBackSec, delta)) }
         findViewById<View>(R.id.settingsExportRow).setOnClickListener { onExportFavorites() }
         findViewById<View>(R.id.settingsImportRow).setOnClickListener { onImportFavorites() }
     }
@@ -115,49 +97,9 @@ class SettingsView @JvmOverloads constructor(
         showToggle(resolutionRow, R.string.match_resolution_title, s.matchResolution)
         showToggle(popupRow, R.string.block_popups_title, s.blockPopups)
         showToggle(adsRow, R.string.block_ads_title, s.blockAds)
-        showStepper(seekForwardRow, seekForwardValue, R.string.seek_forward_title, s.seekForwardSec)
-        showStepper(seekBackRow, seekBackValue, R.string.seek_back_title, s.seekBackSec)
-        seekSpeedValue.setText(seekSpeedLabelRes(s.seekSpeed))
         cursorValue.setText(cursorLabelRes(s.cursorSpeed))
         listsValue.text = grouped(blockList().size)
     }
-
-    /** A stepper row reads out with its value, since the row is the only focus target. */
-    private fun showStepper(row: View, value: TextView, title: Int, seconds: Int) {
-        val text = context.getString(R.string.seek_seconds, seconds)
-        value.text = text
-        row.contentDescription =
-            context.getString(R.string.settings_stepper_state, context.getString(title), text)
-    }
-
-    /**
-     * Wire left/right (and a hold's auto-repeat) on a stepper row to [apply].
-     *
-     * The system's key repeat drives the hold, which is what makes running through the range
-     * cheap here: unlike the player's ramp there is no rate to accelerate, just one step per
-     * repeat, and the value clamps at both ends.
-     */
-    private fun stepper(row: View, apply: (Settings, Int) -> Settings) {
-        row.setOnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-            val delta = when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT -> -1
-                KeyEvent.KEYCODE_DPAD_RIGHT -> 1
-                else -> return@setOnKeyListener false
-            }
-            val before = current()
-            val after = apply(before, delta)
-            if (after != before) {
-                repository?.update(after)
-                render()
-            }
-            true // Swallowed either way: left/right must not walk focus out of the row.
-        }
-    }
-
-    private fun stepped(seconds: Int, delta: Int): Int =
-        (seconds + delta * Settings.SEEK_STEP_SEC)
-            .coerceIn(Settings.SEEK_MIN_SEC, Settings.SEEK_MAX_SEC)
 
     /** The row is activated for "on"; its switch copies the row's state (activated, and focused
      *  for the lighter off track), and the row, the only focus target, says "On"/"Off". */
@@ -241,24 +183,5 @@ class SettingsView @JvmOverloads constructor(
         CursorSpeed.SLOW -> R.string.cursor_slow
         CursorSpeed.NORMAL -> R.string.cursor_normal
         CursorSpeed.FAST -> R.string.cursor_fast
-    }
-
-    private fun pickSeekSpeed() {
-        val options = listOf(SeekSpeed.GENTLE, SeekSpeed.STANDARD, SeekSpeed.AGGRESSIVE)
-        val labels = options.map { context.getString(seekSpeedLabelRes(it)) }.toTypedArray()
-        AlertDialog.Builder(context)
-            .setTitle(R.string.seek_speed_title)
-            .setSingleChoiceItems(labels, options.indexOf(current().seekSpeed)) { dialog, which ->
-                repository?.update(current().copy(seekSpeed = options[which]))
-                render()
-                dialog.dismiss()
-            }
-            .show()
-    }
-
-    private fun seekSpeedLabelRes(s: SeekSpeed): Int = when (s) {
-        SeekSpeed.GENTLE -> R.string.seek_speed_gentle
-        SeekSpeed.STANDARD -> R.string.seek_speed_standard
-        SeekSpeed.AGGRESSIVE -> R.string.seek_speed_aggressive
     }
 }
