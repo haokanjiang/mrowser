@@ -88,4 +88,38 @@ class SettingsJsonTest {
         assertFalse(s.autoOpenPlayer)
         assertTrue(s.seeded)
     }
+
+    @Test fun `round trips the seek settings`() {
+        val s = Settings(seekForwardSec = 30, seekBackSec = 10, seekSpeed = SeekSpeed.GENTLE)
+        assertEquals(s, SettingsJson.fromJson(SettingsJson.toJson(s)))
+    }
+
+    @Test fun `seek settings keep their defaults for a pre-upgrade file`() {
+        val s = SettingsJson.fromJson("""{"autoOpenPlayer":true,"seeded":true}""")
+        assertEquals(15, s.seekForwardSec)
+        assertEquals(5, s.seekBackSec)
+        assertEquals(SeekSpeed.STANDARD, s.seekSpeed)
+    }
+
+    @Test fun `a seek amount outside the range is clamped on read`() {
+        // A hand-edited file must not be able to put the player on a 0s or 10-minute jump.
+        val low = SettingsJson.fromJson("""{"seekForwardSec":0,"seekBackSec":-30}""")
+        assertEquals(Settings.SEEK_MIN_SEC, low.seekForwardSec)
+        assertEquals(Settings.SEEK_MIN_SEC, low.seekBackSec)
+
+        val high = SettingsJson.fromJson("""{"seekForwardSec":600,"seekBackSec":999}""")
+        assertEquals(Settings.SEEK_MAX_SEC, high.seekForwardSec)
+        assertEquals(Settings.SEEK_MAX_SEC, high.seekBackSec)
+    }
+
+    @Test fun `an unknown seek speed falls back to standard`() {
+        assertEquals(
+            SeekSpeed.STANDARD,
+            SettingsJson.fromJson("""{"seekSpeed":"LUDICROUS"}""").seekSpeed
+        )
+    }
+
+    @Test fun `a non-numeric seek amount falls back to the default`() {
+        assertEquals(15, SettingsJson.fromJson("""{"seekForwardSec":"fast"}""").seekForwardSec)
+    }
 }

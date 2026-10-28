@@ -60,6 +60,64 @@
             <View
                 style="@style/Widget.Mrowser.SettingsSwitch" />
         </LinearLayout>
+        <!-- Stepper rows: the row holds focus and left/right adjust the value (the same gesture
+             the player uses), so −/+ are affordances rather than focus targets. -->
+        <LinearLayout
+            android:id="@+id/settingsSeekForwardRow"
+            style="@style/Widget.Mrowser.SettingsRow">
+
+            <TextView
+                style="@style/Mrowser.SettingsLabel"
+                android:text="@string/seek_forward_title" />
+
+            <ImageView
+                style="@style/Mrowser.SettingsStepperIcon"
+                android:src="@drawable/ic_minus"
+                android:contentDescription="@string/seek_less" />
+
+            <TextView
+                android:id="@+id/settingsSeekForwardValue"
+                style="@style/Mrowser.SettingsStepperValue" />
+
+            <ImageView
+                style="@style/Mrowser.SettingsStepperIcon"
+                android:src="@drawable/ic_plus"
+                android:contentDescription="@string/seek_more" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/settingsSeekBackRow"
+            style="@style/Widget.Mrowser.SettingsRow">
+
+            <TextView
+                style="@style/Mrowser.SettingsLabel"
+                android:text="@string/seek_back_title" />
+
+            <ImageView
+                style="@style/Mrowser.SettingsStepperIcon"
+                android:src="@drawable/ic_minus"
+                android:contentDescription="@string/seek_less" />
+
+            <TextView
+                android:id="@+id/settingsSeekBackValue"
+                style="@style/Mrowser.SettingsStepperValue" />
+
+            <ImageView
+                style="@style/Mrowser.SettingsStepperIcon"
+                android:src="@drawable/ic_plus"
+                android:contentDescription="@string/seek_more" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/settingsSeekSpeedRow"
+            style="@style/Widget.Mrowser.SettingsRow">
+
+            <TextView
+                style="@style/Mrowser.SettingsLabel"
+                android:text="@string/seek_speed_title" />
+
+            <TextView
+                android:id="@+id/settingsSeekSpeedValue"
+                style="@style/Mrowser.SettingsValue" />
+        </LinearLayout>
         <TextView
             style="@style/Mrowser.SettingsSection"
             android:text="@string/settings_section_browsing" />

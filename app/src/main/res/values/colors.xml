@@ -41,4 +41,9 @@
     <color name="chip">#EB161414</color>
     <color name="chip_border">#1AFFFFFF</color>
     <color name="sync_box">#DB161414</color>
+
+    <!-- The player's time bar. Played is the brand red, as a Netflix-style progress fill and
+         because red is this app's colour for state. Buffered sits between it and the track. -->
+    <color name="time_bar_buffered">#66FFFFFF</color>
+    <color name="time_bar_unplayed">#33FFFFFF</color>
 </resources>

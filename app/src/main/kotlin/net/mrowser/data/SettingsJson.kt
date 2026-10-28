@@ -16,6 +16,9 @@ object SettingsJson {
             .put("adsAllowedOn", JSONArray(settings.adsAllowedOn.sorted()))
             .put("matchFrameRate", settings.matchFrameRate)
             .put("matchResolution", settings.matchResolution)
+            .put("seekForwardSec", settings.seekForwardSec)
+            .put("seekBackSec", settings.seekBackSec)
+            .put("seekSpeed", settings.seekSpeed.name)
             .put("seeded", settings.seeded)
             .put("navHintShown", settings.navHintShown)
             .toString()
@@ -33,6 +36,11 @@ object SettingsJson {
                 adsAllowedOn = stringSet(o.optJSONArray("adsAllowedOn")) ?: defaults.adsAllowedOn,
                 matchFrameRate = o.optBoolean("matchFrameRate", defaults.matchFrameRate),
                 matchResolution = o.optBoolean("matchResolution", defaults.matchResolution),
+                // Clamped on read as well as on write: a hand-edited file must not be able to
+                // put the player on a 0s or 10-minute jump.
+                seekForwardSec = seekSec(o, "seekForwardSec", defaults.seekForwardSec),
+                seekBackSec = seekSec(o, "seekBackSec", defaults.seekBackSec),
+                seekSpeed = enumOrDefault(o.optString("seekSpeed"), defaults.seekSpeed),
                 seeded = o.optBoolean("seeded", defaults.seeded),
                 navHintShown = o.optBoolean("navHintShown", defaults.navHintShown)
             )
@@ -40,6 +48,10 @@ object SettingsJson {
             Settings()
         }
     }
+
+    /** A seek amount in seconds, clamped to the supported range. */
+    private fun seekSec(o: JSONObject, key: String, default: Int): Int =
+        o.optInt(key, default).coerceIn(Settings.SEEK_MIN_SEC, Settings.SEEK_MAX_SEC)
 
     /** Non-string and blank elements are skipped; a missing/non-array value is null. */
     private fun stringSet(arr: JSONArray?): Set<String>? {

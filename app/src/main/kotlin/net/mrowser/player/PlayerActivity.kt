@@ -4,11 +4,14 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.TypefaceSpan
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -45,6 +48,20 @@ class PlayerActivity : Activity() {
     private var subtitleController: SubtitleSyncController? = null
     private var playerView: PlayerView? = null
     private var streamUrl: String? = null
+    private var timeBar: View? = null
+
+    // Seek-key gesture state. SeekGesture decides; this owns the timing, as CursorLayout does
+    // for the BACK hold. `seekDown` is the keycode of the key being held, so a press on the
+    // other direction mid-hold cannot be mistaken for a repeat of this one.
+    private val seekHandler = Handler(Looper.getMainLooper())
+    private var seekDown = 0
+    private var seekHolding = false
+    private var holdStartedAt = 0L
+    private var holdForward = false
+    private var lastControlsRefreshAt = 0L
+
+    /** Whether the OK press in progress is a play/pause rather than a button activation. */
+    private var okIsOurs = false
 
     // Read-only here; the browser writes it. Read when a stream's tracks arrive, so a toggle
     // flipped in Settings applies to the next stream with no restart.
@@ -61,6 +78,7 @@ class PlayerActivity : Activity() {
         setContentView(R.layout.player_activity)
         val playerView = findViewById<PlayerView>(R.id.playerView)
         this.playerView = playerView
+        timeBar = playerView.findViewById(androidx.media3.ui.R.id.exo_progress)
 
         val json = intent.getStringExtra(EXTRA_REQUEST) ?: run { finish(); return }
         val request = PlaybackRequest.fromJson(json)
@@ -107,6 +125,10 @@ class PlayerActivity : Activity() {
             PlayerView.ControllerVisibilityListener { visibility ->
                 installControls()
                 syncBox.visibility = if (hasSubtitles) visibility else View.GONE
+                // media3 seats first focus on the play/pause button, which this layout drops, so
+                // nothing would hold focus and the arrow keys would do nothing. Post it: the
+                // controls are mid-animation here and cannot take focus yet.
+                if (visibility == View.VISIBLE) playerView.post { focusTimeBar() }
             }
         )
         playerView.post { installControls() }
@@ -163,6 +185,150 @@ class PlayerActivity : Activity() {
         controller.start()
         updateSubsButton()
         exo.playWhenReady = true
+    }
+
+    /**
+     * Take the seek keys and OK before the view tree sees them.
+     *
+     * `PlayerView.dispatchKeyEvent` answers the first D-pad press by revealing the controls and
+     * nothing else, so stock media3 needs three presses to seek and does not pause on OK at all.
+     * An Activity's dispatch runs first, which is also what makes "a short press shows no
+     * controls" free: PlayerView never receives the key, so its reveal branch never runs.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val code = event.keyCode
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (handleSeekKey(event, forward = code == KeyEvent.KEYCODE_DPAD_RIGHT)) return true
+        } else if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
+            // Ownership is decided on the press, not the release: DPAD_CENTER is one of
+            // PlayerView's "isDpadKey", so letting the press through would reveal the controls,
+            // and by the release they would be up — OK would never pause, only reveal. Taken
+            // only while they are hidden; with them up OK must still activate the focused
+            // button (the gear).
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.repeatCount == 0) okIsOurs = !controlsVisible()
+                if (okIsOurs) return true // Auto-repeats included: a held OK must not re-toggle.
+            } else if (event.action == KeyEvent.ACTION_UP && okIsOurs) {
+                okIsOurs = false
+                togglePlayback()
+                return true
+            }
+        } else if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+            code == KeyEvent.KEYCODE_MEDIA_PLAY ||
+            code == KeyEvent.KEYCODE_MEDIA_PAUSE
+        ) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                togglePlayback()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** True when this press is ours; false leaves it to normal focus movement. */
+    private fun handleSeekKey(event: KeyEvent, forward: Boolean): Boolean {
+        val p = player ?: return false
+        val sameKeyDown = seekDown == event.keyCode && seekDown != 0
+
+        return when (SeekGesture.decide(event.action, sameKeyDown, seekHolding)) {
+            SeekGesture.Decision.ArmHold -> {
+                // The focus gate applies to starting only — see SeekGesture.canStart.
+                if (!SeekGesture.canStart(controlsVisible(), timeBar?.isFocused == true)) {
+                    false
+                } else {
+                    // The other direction was held: drop that gesture and start this one.
+                    if (seekDown != 0) endHold()
+                    seekDown = event.keyCode
+                    holdForward = forward
+                    seekHandler.postDelayed(beginHold, SeekGesture.HOLD_MS)
+                    true
+                }
+            }
+            SeekGesture.Decision.Step -> {
+                endHold()
+                val s = settings.get()
+                val amount = (if (forward) s.seekForwardSec else s.seekBackSec) * 1_000L
+                // One step of the configured length, through the ramp's clamping so a jump near
+                // either end lands on the bound rather than outside the stream.
+                p.seekTo(
+                    SeekRamp.advance(
+                        positionMs = p.currentPosition,
+                        durationMs = p.duration,
+                        rate = 1,
+                        tickMs = amount,
+                        forward = forward
+                    )
+                )
+                true
+            }
+            SeekGesture.Decision.EndHold -> {
+                endHold()
+                true
+            }
+            // An auto-repeat while held (the vendor's repeat rate would otherwise fire a burst
+            // of seeks), or a release we are not tracking.
+            SeekGesture.Decision.Ignore -> sameKeyDown || seekDown != 0
+        }
+    }
+
+    /** The hold threshold passed: show the controls and start the ramp. */
+    private val beginHold = Runnable {
+        val p = player ?: return@Runnable
+        seekHolding = true
+        holdStartedAt = System.currentTimeMillis()
+        lastControlsRefreshAt = 0L
+        playerView?.showController()
+        // Scrubbing mode is media3's own "many frequent seeks" path: it drops the audio track,
+        // raises the codec operating rate and skips both the MediaCodec flush and the key-frame
+        // reset, which is what keeps a ramp from stuttering. It also suppresses playback.
+        p.setScrubbingModeEnabled(true)
+        seekHandler.post(rampTick)
+    }
+
+    private val rampTick = object : Runnable {
+        override fun run() {
+            val p = player ?: return
+            val held = System.currentTimeMillis() - holdStartedAt
+            val rate = SeekRamp.rateAt(held, settings.get().seekSpeed)
+            p.seekTo(SeekRamp.advance(p.currentPosition, p.duration, rate, TICK_MS, holdForward))
+            // The hide timer is driven by input PlayerView receives, and it never sees these
+            // keys — so without this the controls would vanish mid-ramp on any hold past the
+            // 3s timeout. showController() while fully visible only resets that timer (its
+            // uxState is already ALL_VISIBLE), so it neither replays the animation nor moves
+            // focus; once a second is ample against a 3s timeout.
+            if (held - lastControlsRefreshAt >= CONTROLS_REFRESH_MS) {
+                lastControlsRefreshAt = held
+                playerView?.showController()
+            }
+            seekHandler.postDelayed(this, TICK_MS)
+        }
+    }
+
+    private fun endHold() {
+        seekHandler.removeCallbacks(beginHold)
+        seekHandler.removeCallbacks(rampTick)
+        if (seekHolding) {
+            seekHolding = false
+            player?.setScrubbingModeEnabled(false)
+        }
+        seekDown = 0
+    }
+
+    private fun controlsVisible(): Boolean = playerView?.isControllerFullyVisible == true
+
+    /** Seat focus on the time bar unless something in the controls already has it (the gear,
+     *  reached with up/down, must keep focus while the controls stay up). */
+    private fun focusTimeBar() {
+        val bar = timeBar ?: return
+        if (currentFocus == null || currentFocus === playerView) bar.requestFocus()
+    }
+
+    private fun togglePlayback() {
+        val p = player ?: return
+        // Pausing makes media3 show the controls indefinitely (shouldShowControllerIndefinitely
+        // reads playWhenReady), and resuming hands them back to the show timeout. So pause
+        // doubles as "let me see where I am, reach the gear, nudge the subtitles".
+        p.playWhenReady = !p.playWhenReady
     }
 
     /**
@@ -305,6 +471,10 @@ class PlayerActivity : Activity() {
     }
 
     override fun onStop() {
+        // Before savePosition: a ramp still running would keep moving the position that is
+        // about to be recorded, and would leave scrubbing mode on across the background trip.
+        endHold()
+        okIsOurs = false // A press whose release went to another window must not toggle later.
         savePosition()
         super.onStop()
         setPreferredDisplayMode(originalModeId)
@@ -323,18 +493,26 @@ class PlayerActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        endHold()
         setPreferredDisplayMode(originalModeId)
         subtitleController?.stop()
         subtitleController = null
         player?.release()
         player = null
         playerView = null
+        timeBar = null
     }
 
     companion object {
         const val EXTRA_REQUEST = "mrowser.request"
         private const val STEP_MS = 500L
         private const val TAG = "PlayerActivity"
+
+        /** Ramp tick, 20fps: smooth enough to read as continuous without wasting seeks. */
+        private const val TICK_MS = 50L
+
+        /** How often a running ramp re-asserts the controls against their 3s hide timeout. */
+        private const val CONTROLS_REFRESH_MS = 1_000L
 
         // Process-wide, so it outlives each PlayerActivity: BACK finishes the player, and the
         // next Play synced starts a new one.

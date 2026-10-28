@@ -20,8 +20,22 @@ data class Settings(
     val matchFrameRate: Boolean = false,
     /** Switch the display's resolution to the video's while playing. Off by default, as above. */
     val matchResolution: Boolean = false,
+    /** Seconds a short right press jumps forward. Clamped to [SEEK_MIN_SEC]..[SEEK_MAX_SEC]. */
+    val seekForwardSec: Int = 15,
+    /** Seconds a short left press jumps back. Smaller than forward by default: re-hearing a
+     *  line needs a few seconds, skipping an intro needs more. */
+    val seekBackSec: Int = 5,
+    /** How fast a held left/right key ramps up. */
+    val seekSpeed: SeekSpeed = SeekSpeed.STANDARD,
     /** Internal bookkeeping, not a user preference: default favorites written once. */
     val seeded: Boolean = false,
     /** Internal bookkeeping, not a user preference: hold-BACK hint shown once. */
     val navHintShown: Boolean = false
-)
+) {
+    companion object {
+        /** Seek-amount bounds, in seconds. The step is [SEEK_STEP_SEC], giving 12 stops. */
+        const val SEEK_MIN_SEC = 5
+        const val SEEK_MAX_SEC = 60
+        const val SEEK_STEP_SEC = 5
+    }
+}

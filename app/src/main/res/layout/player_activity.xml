@@ -5,13 +5,22 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
+    <!-- controller_layout_id: our own controls (no scrim, no centre row) — see player_controls.
+         show_timeout: the controls go after 3s. While paused media3 keeps them up regardless
+         (shouldShowControllerIndefinitely reads playWhenReady), which is deliberate — pause is
+         how you read the position and reach the gear.
+         time_bar_scrubbing_enabled: lets media3 drive ExoPlayer's scrubbing mode from the time
+         bar's own drag, matching what a held arrow key does. -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:surface_type="surface_view"
         app:show_subtitle_button="false"
-        app:resize_mode="fit" />
+        app:resize_mode="fit"
+        app:controller_layout_id="@layout/player_controls"
+        app:show_timeout="3000"
+        app:time_bar_scrubbing_enabled="true" />
 
     <!-- The sub-sync capsule: 40dp tall with 5dp padding all round, so the 30dp buttons sit
          concentric. Icons are vectors, exactly centred (text glyphs sat off-centre). -->
