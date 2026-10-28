@@ -21,9 +21,9 @@ class UpdateControllerTest {
 
     private fun payload(version: String) = """
         {"tag_name":"v$version","body":"notes","draft":false,"prerelease":false,
-         "html_url":"https://github.com/m-salehi-v/mrowser/releases/tag/v$version",
+         "html_url":"https://github.com/haokanjiang/mrowser/releases/tag/v$version",
          "assets":[{"name":"app-release.apk","size":12400000,
-          "browser_download_url":"https://github.com/m-salehi-v/mrowser/releases/download/v$version/app-release.apk"}]}
+          "browser_download_url":"https://github.com/haokanjiang/mrowser/releases/download/v$version/app-release.apk"}]}
     """.trimIndent()
 
     private fun controller(

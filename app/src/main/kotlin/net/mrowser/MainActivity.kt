@@ -56,6 +56,7 @@ import net.mrowser.stream.StreamSniffer
 import net.mrowser.update.ApkDownloader
 import net.mrowser.update.JsonUpdateStore
 import net.mrowser.update.ReleaseFetcher
+import net.mrowser.update.Repo
 import net.mrowser.update.UpdateController
 import net.mrowser.update.UpdateDialog
 import net.mrowser.web.BrowserWebChromeClient
@@ -758,7 +759,9 @@ class MainActivity : Activity() {
         private const val CHIP_TIMEOUT_MS = 30_000L
         private const val REQ_STORAGE = 101
         private const val REQ_IMPORT_FAVORITES = 102
-        private const val OBTAINIUM_ADD_URL = "obtainium://add/https://github.com/m-salehi-v/mrowser"
+        // Obtainium must be pointed at the same repository the in-app check reads, or it would
+        // subscribe a user to a build signed with a different key — see Repo.
+        private const val OBTAINIUM_ADD_URL = Repo.OBTAINIUM_ADD_URL
         private const val OBTAINIUM_URL = "https://github.com/ImranR98/Obtainium"
     }
 }

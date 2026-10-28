@@ -15,9 +15,9 @@ class UpdateCheckPolicyTest {
         tag = "v$version",
         version = version,
         notes = "",
-        apkUrl = "https://github.com/m-salehi-v/mrowser/releases/download/v$version/app-release.apk",
+        apkUrl = "https://github.com/haokanjiang/mrowser/releases/download/v$version/app-release.apk",
         apkSizeBytes = 1L,
-        htmlUrl = "https://github.com/m-salehi-v/mrowser/releases/tag/v$version"
+        htmlUrl = "https://github.com/haokanjiang/mrowser/releases/tag/v$version"
     )
 
     @Test fun `a check just made is not repeated`() {

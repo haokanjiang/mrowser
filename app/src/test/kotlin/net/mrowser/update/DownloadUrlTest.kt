@@ -8,7 +8,7 @@ class DownloadUrlTest {
 
     @Test fun `a github release asset is allowed`() {
         assertTrue(DownloadUrl.isAllowed(
-            "https://github.com/m-salehi-v/mrowser/releases/download/v1.4.0/app-release.apk"))
+            "https://github.com/haokanjiang/mrowser/releases/download/v1.4.0/app-release.apk"))
     }
 
     @Test fun `a github asset redirect host is allowed`() {

@@ -11,11 +11,11 @@ class ReleaseJsonTest {
         draft: Boolean = false,
         prerelease: Boolean = false,
         assets: String = """[{"name":"app-release.apk","size":12400000,
-            "browser_download_url":"https://github.com/m-salehi-v/mrowser/releases/download/v1.4.0/app-release.apk"}]"""
+            "browser_download_url":"https://github.com/haokanjiang/mrowser/releases/download/v1.4.0/app-release.apk"}]"""
     ) = """
         {"tag_name":"$tag","name":"mrowser $tag","body":"Adds an update channel.",
          "draft":$draft,"prerelease":$prerelease,
-         "html_url":"https://github.com/m-salehi-v/mrowser/releases/tag/$tag",
+         "html_url":"https://github.com/haokanjiang/mrowser/releases/tag/$tag",
          "assets":$assets}
     """.trimIndent()
 
@@ -26,10 +26,10 @@ class ReleaseJsonTest {
         assertEquals("Adds an update channel.", r.notes)
         assertEquals(12_400_000L, r.apkSizeBytes)
         assertEquals(
-            "https://github.com/m-salehi-v/mrowser/releases/download/v1.4.0/app-release.apk",
+            "https://github.com/haokanjiang/mrowser/releases/download/v1.4.0/app-release.apk",
             r.apkUrl
         )
-        assertEquals("https://github.com/m-salehi-v/mrowser/releases/tag/v1.4.0", r.htmlUrl)
+        assertEquals("https://github.com/haokanjiang/mrowser/releases/tag/v1.4.0", r.htmlUrl)
     }
 
     @Test fun `keeps the tag but strips the v from the version`() {

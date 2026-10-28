@@ -10,12 +10,12 @@ import java.net.URL
  * one blocking call on a caller-supplied thread, every failure logged and swallowed.
  *
  * `/releases/latest` is GitHub's definition of the newest non-draft, non-prerelease release, so
- * prereleases published from this repository never reach users.
+ * prereleases published from [Repo] never reach users.
  */
 object ReleaseFetcher {
 
-    const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/m-salehi-v/mrowser/releases/latest"
+    /** Derived from [Repo], so a fork's update channel is one edit, not a search. */
+    const val LATEST_RELEASE_URL = Repo.LATEST_RELEASE_API
 
     private const val TAG = "ReleaseFetcher"
     private const val TIMEOUT_MS = 15_000

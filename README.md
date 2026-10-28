@@ -3,9 +3,9 @@
 > A sideload-only **Android TV browser** for **watching video from websites your TV has no app for**. It detects the page's video stream automatically (**HLS**, **DASH**, or a plain video file) and plays it in a proper native **Media3 / ExoPlayer** player — correct **A/V sync**, quality and audio-track selection, and **subtitles you can retime while watching** — with a **D-pad-driven virtual mouse cursor** to get you there from the remote. No Google Play Services required.
 
 <!-- Badges: update the owner/repo path once the repository is public. -->
-[![Build](https://github.com/m-salehi-v/mrowser/actions/workflows/build.yml/badge.svg)](https://github.com/m-salehi-v/mrowser/actions/workflows/build.yml)
+[![Build](https://github.com/haokanjiang/mrowser/actions/workflows/build.yml/badge.svg)](https://github.com/haokanjiang/mrowser/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/m-salehi-v/mrowser?include_prereleases&sort=semver)](https://github.com/m-salehi-v/mrowser/releases)
+[![Latest release](https://img.shields.io/github/v/release/haokanjiang/mrowser?include_prereleases&sort=semver)](https://github.com/haokanjiang/mrowser/releases)
 [![Platform: Android TV](https://img.shields.io/badge/platform-Android%20TV-success.svg)](#requirements)
 
 ---
@@ -114,7 +114,7 @@ Throughout, **pure decision/parsing/geometry logic is separated from Android glu
 
 mrowser is **sideload-only** — it is not on the Play Store and needs no Google Play Services.
 
-1. Download the latest `app-release.apk` from the [**Releases**](https://github.com/m-salehi-v/mrowser/releases) page.
+1. Download the latest `app-release.apk` from the [**Releases**](https://github.com/haokanjiang/mrowser/releases) page.
 2. Get the APK onto your Android TV device using any of:
    - a USB stick + a file manager app, or
    - a sideloading helper app (e.g. "Send files to TV" / "Downloader"), or
@@ -141,7 +141,7 @@ below — the dialog's **Automatic updates** button sets it up.
 [Obtainium](https://github.com/ImranR98/Obtainium) installs apps directly from GitHub Releases and keeps them updated — no store account, no Play Services. Add mrowser as an app source with this URL:
 
 ```
-https://github.com/m-salehi-v/mrowser
+https://github.com/haokanjiang/mrowser
 ```
 
 ---
@@ -269,7 +269,7 @@ Contributions are welcome. A good workflow:
 3. Run `./gradlew test` and `./gradlew assembleDebug` before opening a PR — CI runs both on every push and pull request.
 4. Follow conventional-commit style messages and keep changes focused.
 
-Issues and feature requests are tracked on the GitHub [issue tracker](https://github.com/m-salehi-v/mrowser/issues).
+Issues and feature requests are tracked on the GitHub [issue tracker](https://github.com/haokanjiang/mrowser/issues).
 
 ---
 
@@ -278,7 +278,7 @@ Issues and feature requests are tracked on the GitHub [issue tracker](https://gi
 mrowser is free and built in spare time. If it is useful to you, these all help:
 
 - **Star the repository** — it is how other people find it.
-- **Report what breaks** — a site whose stream isn't detected, or a TV box where something misbehaves, is worth an [issue](https://github.com/m-salehi-v/mrowser/issues).
+- **Report what breaks** — a site whose stream isn't detected, or a TV box where something misbehaves, is worth an [issue](https://github.com/haokanjiang/mrowser/issues).
 - **Donate in crypto:**
 
 | Coin | Network | Address |
@@ -317,10 +317,10 @@ Built on the AndroidX **Media3 / ExoPlayer** library for HLS, DASH and progressi
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=m-salehi-v%2Fmrowser&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=haokanjiang%2Fmrowser&type=date&legend=top-left">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=m-salehi-v/mrowser&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=m-salehi-v/mrowser&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=m-salehi-v/mrowser&type=date&legend=top-left" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=haokanjiang/mrowser&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=haokanjiang/mrowser&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=haokanjiang/mrowser&type=date&legend=top-left" />
   </picture>
 </a>

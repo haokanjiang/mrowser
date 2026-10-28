@@ -10,9 +10,9 @@ class UpdateJsonTest {
         tag = "v1.4.0",
         version = "1.4.0",
         notes = "Adds an update channel.",
-        apkUrl = "https://github.com/m-salehi-v/mrowser/releases/download/v1.4.0/app-release.apk",
+        apkUrl = "https://github.com/haokanjiang/mrowser/releases/download/v1.4.0/app-release.apk",
         apkSizeBytes = 12_400_000L,
-        htmlUrl = "https://github.com/m-salehi-v/mrowser/releases/tag/v1.4.0"
+        htmlUrl = "https://github.com/haokanjiang/mrowser/releases/tag/v1.4.0"
     )
 
     @Test fun `round trips a full state`() {
