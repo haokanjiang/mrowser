@@ -382,11 +382,22 @@ class PlayerActivity : Activity() {
     private fun playerOwnsKey(): Boolean =
         SeekGesture.ownsKey(controlsVisible(), timeBar?.isFocused == true)
 
-    /** Seat focus on the time bar unless something in the controls already has it (the gear,
-     *  reached with up/down, must keep focus while the controls stay up). */
+    /**
+     * Seat first focus on the time bar when the controls appear.
+     *
+     * media3 would normally seat it on the play/pause button, but this layout has none, and
+     * `requestPlayPauseFocus` does nothing when that view is absent — so the framework's own
+     * focus search decides, and it picks the gear. The bar must have it instead: it is what
+     * left/right act on, and the gear is a destination reached with up.
+     *
+     * Deliberately not guarded on `currentFocus == null`: the stray focus this corrects *is* a
+     * real view (the gear), so a null check would never fire. It is guarded on the controls
+     * having just become visible — the only moment media3 seats focus — so the gear keeps focus
+     * once the user moves there, and a user who is already on the bar sees no change.
+     */
     private fun focusTimeBar() {
         val bar = timeBar ?: return
-        if (currentFocus == null || currentFocus === playerView) bar.requestFocus()
+        if (!bar.isFocused) bar.requestFocus()
     }
 
     private fun togglePlayback() {
