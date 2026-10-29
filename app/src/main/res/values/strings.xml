@@ -50,9 +50,10 @@
     <string name="seek_menu_forward">Skip forward — %1$ds</string>
     <string name="seek_menu_back">Skip back — %1$ds</string>
     <string name="seek_menu_speed">Hold-to-seek speed — %1$s</string>
-    <string name="seek_speed_gentle">Gentle</string>
-    <string name="seek_speed_standard">Standard</string>
-    <string name="seek_speed_aggressive">Aggressive</string>
+    <!-- A hold crosses the whole stream in this long, so shorter is faster. -->
+    <string name="seek_speed_gentle">Gentle — 20s end to end</string>
+    <string name="seek_speed_standard">Standard — 10s end to end</string>
+    <string name="seek_speed_fast">Fast — 5s end to end</string>
     <string name="settings_section_playback">Playback</string>
     <string name="settings_section_browsing">Browsing</string>
     <string name="settings_section_favorites">Favorites</string>

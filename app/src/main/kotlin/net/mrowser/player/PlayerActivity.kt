@@ -31,6 +31,7 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.TrackSelectionDialogBuilder
@@ -42,6 +43,7 @@ import net.mrowser.data.SettingsRepository
 import net.mrowser.stream.MediaMimeType
 import net.mrowser.stream.PlaybackRequest
 import java.io.File
+import kotlin.math.abs
 
 @OptIn(UnstableApi::class)
 class PlayerActivity : Activity() {
@@ -52,18 +54,18 @@ class PlayerActivity : Activity() {
     private var streamUrl: String? = null
     private var timeBar: View? = null
 
-    // Seek-key gesture state. SeekGesture decides; this owns the timing, as CursorLayout does
-    // for the BACK hold. `seekDown` is the keycode of the key being held, so a press on the
-    // other direction mid-hold cannot be mistaken for a repeat of this one.
+    // Seek-key gesture state. SeekGesture decides, SeekPreview computes; this owns the timing,
+    // as CursorLayout does for the BACK hold. `seekDown` is the keycode of the key being held,
+    // so a press on the other direction mid-hold cannot be mistaken for a repeat of this one.
     private val seekHandler = Handler(Looper.getMainLooper())
     private var seekDown = 0
     private var seekHolding = false
-    private var holdStartedAt = 0L
     private var holdForward = false
     private var lastControlsRefreshAt = 0L
+    private var holdStartedAt = 0L
 
-    /** The ramp's own target position, advanced per tick rather than read back from the player. */
-    private var rampPosition = 0L
+    /** Set while a scrub pauses playback, so the release can put it back. */
+    private var playWhenReadyBeforeHold = true
 
     /** Whether the OK press in progress is a play/pause rather than a button activation. */
     private var okIsOurs = false
@@ -236,7 +238,8 @@ class PlayerActivity : Activity() {
                 if (!playerOwnsKey()) {
                     false
                 } else {
-                    // The other direction was held: drop that gesture and start this one.
+                    // The other direction was held: end that gesture (committing its preview)
+                    // and start this one.
                     if (seekDown != 0) endHold()
                     seekDown = event.keyCode
                     holdForward = forward
@@ -245,20 +248,16 @@ class PlayerActivity : Activity() {
                 }
             }
             SeekGesture.Decision.Step -> {
-                endHold()
+                stopHoldTimers()
+                seekDown = 0
                 val s = settings.get()
                 val amount = (if (forward) s.seekForwardSec else s.seekBackSec) * 1_000L
-                // One step of the configured length, through the ramp's clamping so a jump near
-                // either end lands on the bound rather than outside the stream.
-                p.seekTo(
-                    SeekRamp.advance(
-                        positionMs = p.currentPosition,
-                        durationMs = p.duration,
-                        rate = 1,
-                        tickMs = amount,
-                        forward = forward
-                    )
-                )
+                // One step on the bar's preview, which accumulates across presses. The commit is
+                // re-armed rather than immediate, so a run of presses costs one seek between
+                // them instead of one each that the next discards.
+                scrubBy(if (forward) amount else -amount)
+                seekHandler.removeCallbacks(commitScrubAction)
+                seekHandler.postDelayed(commitScrubAction, SeekGesture.COMMIT_DELAY_MS)
                 true
             }
             SeekGesture.Decision.EndHold -> {
@@ -271,55 +270,110 @@ class PlayerActivity : Activity() {
         }
     }
 
-    /** The hold threshold passed: show the controls and start the ramp. */
+    /**
+     * The hold threshold passed: show the controls, pause, and start scrubbing the preview.
+     *
+     * Playback is paused rather than left running under media3's scrubbing mode. Even with that
+     * mode's optimisations, a seek per tick asks the stream to locate and decode a segment 25
+     * times a second, which no adaptive stream keeps up with — the picture stalled and the
+     * scrubber crawled with it. Paused, the frame simply holds while the bar moves freely, and
+     * the stream is asked for exactly one position on release. This is what blbl does.
+     */
     private val beginHold = Runnable {
         val p = player ?: return@Runnable
+        val duration = p.duration
+        // No timeline (live, or not loaded yet): there is nothing to scrub across, so leave the
+        // gesture as a step — its preview is already accumulating.
+        if (SeekPreview.holdStepMs(duration, SeekGesture.TICK_MS, settings.get().seekSpeed.traverseMs) == 0L) {
+            return@Runnable
+        }
         seekHolding = true
         holdStartedAt = System.currentTimeMillis()
         lastControlsRefreshAt = 0L
-        // The ramp advances this, not currentPosition — see rampTick.
-        rampPosition = p.currentPosition
+        playWhenReadyBeforeHold = p.playWhenReady
+        p.playWhenReady = false
         playerView?.showController()
-        // Scrubbing mode is media3's own "many frequent seeks" path: it drops the audio track,
-        // raises the codec operating rate and skips both the MediaCodec flush and the key-frame
-        // reset, which is what keeps a ramp from stuttering. It also suppresses playback.
-        p.setScrubbingModeEnabled(true)
-        seekHandler.post(rampTick)
+        seekHandler.post(scrubTick)
     }
 
-    private val rampTick = object : Runnable {
+    /** Advances the bar's preview only — the player is told once, on release. */
+    private val scrubTick = object : Runnable {
         override fun run() {
             val p = player ?: return
-            val held = System.currentTimeMillis() - holdStartedAt
-            val rate = SeekRamp.rateAt(held, settings.get().seekSpeed)
-            // Advance our own target, never re-read currentPosition: seekTo is asynchronous, so
-            // 50ms later the player is usually still loading the segment for the previous one
-            // and reports the old position. Each tick would then start over from roughly where
-            // the last began — the ramp crawled at the stream's load speed instead of its rate,
-            // whatever the preset said.
-            rampPosition = SeekRamp.advance(rampPosition, p.duration, rate, TICK_MS, holdForward)
-            p.seekTo(rampPosition)
+            val step = SeekPreview.holdStepMs(
+                p.duration, SeekGesture.TICK_MS, settings.get().seekSpeed.traverseMs
+            )
+            scrubBy(if (holdForward) step else -step)
             // The hide timer is driven by input PlayerView receives, and it never sees these
-            // keys — so without this the controls would vanish mid-ramp on any hold past the
-            // 3s timeout. showController() while fully visible only resets that timer (its
-            // uxState is already ALL_VISIBLE), so it neither replays the animation nor moves
-            // focus; once a second is ample against a 3s timeout.
+            // keys — so without this the controls would vanish mid-scrub past the 3s timeout.
+            // showController() while fully visible only resets that timer (its uxState is
+            // already ALL_VISIBLE), so it neither replays the animation nor moves focus.
+            val held = System.currentTimeMillis() - holdStartedAt
             if (held - lastControlsRefreshAt >= CONTROLS_REFRESH_MS) {
                 lastControlsRefreshAt = held
                 playerView?.showController()
             }
-            seekHandler.postDelayed(this, TICK_MS)
+            seekHandler.postDelayed(this, SeekGesture.TICK_MS)
         }
     }
 
+    /** Ends a hold: stop ticking, commit the bar's preview, and restore playback. */
     private fun endHold() {
-        seekHandler.removeCallbacks(beginHold)
-        seekHandler.removeCallbacks(rampTick)
-        if (seekHolding) {
-            seekHolding = false
-            player?.setScrubbingModeEnabled(false)
-        }
+        stopHoldTimers()
         seekDown = 0
+        val wasScrubbing = seekHolding
+        seekHolding = false
+        commitScrub()
+        if (wasScrubbing) player?.playWhenReady = playWhenReadyBeforeHold
+    }
+
+    private fun stopHoldTimers() {
+        seekHandler.removeCallbacks(beginHold)
+        seekHandler.removeCallbacks(scrubTick)
+        seekHandler.removeCallbacks(commitScrubAction)
+    }
+
+    private val commitScrubAction = Runnable { commitScrub() }
+
+    /**
+     * Move the time bar's **own** preview by [deltaMs], without telling the player.
+     *
+     * `DefaultTimeBar` already implements exactly the model this needs: a key press enters
+     * `scrubbing` and moves `scrubPosition`, `update()` draws `scrubbing ? scrubPosition :
+     * position`, and `PlayerControlView`'s `onScrubStop` listener performs the single seek — on
+     * `DPAD_CENTER`, or 1s after the last press. So the preview, its accumulation across presses
+     * and its commit are all media3's, through public API, with no second copy of the state here.
+     *
+     * Two things had to be supplied. The bar's own increment is `duration / 20` — **5m09s per
+     * press on a 1h43m film** — so `setKeyTimeIncrement` is set to this delta first. And its
+     * `onKeyDown` is the only public way into `scrubbing`, so the step is applied as a
+     * synthesised press. Writing `setPosition` instead does not work: `updateProgress` calls it
+     * unconditionally from its own polling loop (it consults `scrubbing` only for the position
+     * *label*) and keeps polling while paused, so a preview written that way is pulled back to
+     * the player's position within a frame.
+     *
+     * Per-tick seeking is avoided by leaving `time_bar_scrubbing_enabled` off: with it on,
+     * `onScrubMove` seeks on **every** move, which is the stall this redesign is fixing.
+     */
+    private fun scrubBy(deltaMs: Long) {
+        val bar = timeBar as? DefaultTimeBar ?: return
+        if (deltaMs == 0L) return
+        bar.setKeyTimeIncrement(abs(deltaMs))
+        val code = if (deltaMs > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
+        bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
+    }
+
+    /**
+     * Commit the bar's preview now, rather than waiting out its 1s idle timer.
+     *
+     * `DPAD_CENTER` is `DefaultTimeBar`'s public "commit the scrub" input, and the key never
+     * reaches the bar on its own — OK is play/pause here. A press with no scrub in progress
+     * does nothing, so this is safe to call unconditionally.
+     */
+    private fun commitScrub() {
+        val bar = timeBar as? DefaultTimeBar ?: return
+        val code = KeyEvent.KEYCODE_DPAD_CENTER
+        bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
     }
 
     private fun controlsVisible(): Boolean = playerView?.isControllerFullyVisible == true
@@ -439,7 +493,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun showSeekSpeed() {
-        val options = listOf(SeekSpeed.GENTLE, SeekSpeed.STANDARD, SeekSpeed.AGGRESSIVE)
+        val options = listOf(SeekSpeed.GENTLE, SeekSpeed.STANDARD, SeekSpeed.FAST)
         val labels = options.map { getString(seekSpeedLabelRes(it)) }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(R.string.seek_speed_title)
@@ -453,7 +507,7 @@ class PlayerActivity : Activity() {
     private fun seekSpeedLabelRes(s: SeekSpeed): Int = when (s) {
         SeekSpeed.GENTLE -> R.string.seek_speed_gentle
         SeekSpeed.STANDARD -> R.string.seek_speed_standard
-        SeekSpeed.AGGRESSIVE -> R.string.seek_speed_aggressive
+        SeekSpeed.FAST -> R.string.seek_speed_fast
     }
 
     private fun showSubtitlePicker() {
@@ -532,8 +586,8 @@ class PlayerActivity : Activity() {
     }
 
     override fun onStop() {
-        // Before savePosition: a ramp still running would keep moving the position that is
-        // about to be recorded, and would leave scrubbing mode on across the background trip.
+        // Before savePosition: this commits any preview still in flight, so what gets recorded
+        // is where the user left the gesture rather than where playback happened to be.
         endHold()
         okIsOurs = false // A press whose release went to another window must not toggle later.
         savePosition()
@@ -569,10 +623,7 @@ class PlayerActivity : Activity() {
         private const val STEP_MS = 500L
         private const val TAG = "PlayerActivity"
 
-        /** Ramp tick, 20fps: smooth enough to read as continuous without wasting seeks. */
-        private const val TICK_MS = 50L
-
-        /** How often a running ramp re-asserts the controls against their 3s hide timeout. */
+        /** How often a running scrub re-asserts the controls against their 3s hide timeout. */
         private const val CONTROLS_REFRESH_MS = 1_000L
 
         // Process-wide, so it outlives each PlayerActivity: BACK finishes the player, and the
