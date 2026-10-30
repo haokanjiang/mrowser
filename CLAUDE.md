@@ -131,6 +131,8 @@ on.
 
 `.github/workflows/build.yml` runs `./gradlew test` + `assembleDebug` on every push/PR (`test-and-debug` job), and builds a **signed** release APK on GitHub Release publish (`release-apk` job, gated by `if: github.event_name == 'release'`) using secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` (decoded into a temporary `keystore.properties`). The `release-apk` job needs `permissions: contents: write` to attach the APK — keep it.
 
+The asset is attached as **`mrowser-<versionName>.apk`**, which is also the name `ApkDownloader` saves its own download under, so a file fetched in-app and one taken from the releases page match. The rename is a workflow step, not a Gradle `outputFileName`: AGP 9 dropped the old `applicationVariants` API and its replacement `VariantOutput` exposes only versionCode/versionName/enabled, with no output-filename property. The version is read from the built APK's own `output-metadata.json` rather than the tag, so the name cannot disagree with what is inside it. `ReleaseJson` finds the APK by its `.apk` extension and requires exactly **one**, so the name may change freely but the count may not — the step must `mv`, never copy.
+
 Actions are pinned to commit SHAs (supply-chain safety); `.github/dependabot.yml` opens weekly PRs bumping those pins.
 
 **Releasing:** bump `versionCode` (must increase per release) + `versionName` in `app/build.gradle.kts`, push, then `gh release create vX.Y.Z --prerelease --title … --notes …` — the published event triggers the signed build, which attaches `app-release.apk`. Drop `--prerelease` for a stable release. Remote `origin` = `github.com/haokanjiang/mrowser` (public — the update channel depends on

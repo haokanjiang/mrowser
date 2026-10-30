@@ -66,7 +66,29 @@ jobs:
           } > keystore.properties
       - name: Build signed release APK
         run: ./gradlew assembleRelease
+      # Attach it as `mrowser-1.5.5.apk`, not `app-release.apk`: the asset should say which
+      # version it is, and this is the name ApkDownloader already saves its own download under,
+      # so a file fetched in-app and one grabbed from the releases page match.
+      #
+      # Renamed here rather than in Gradle because AGP 9's variant API has no output-filename
+      # property — the old `applicationVariants` is gone and `VariantOutput` exposes only
+      # versionCode/versionName/enabled. The version comes from the built APK itself (via
+      # output-metadata.json) rather than the tag, so the name can never disagree with what is
+      # inside it.
+      #
+      # ReleaseJson picks the APK by its `.apk` extension and requires exactly **one**, so the
+      # name is free to change but the count is not: the move must replace, never add.
+      - name: Name the APK after the app and version
+        id: apk
+        run: |
+          set -euo pipefail
+          dir=app/build/outputs/apk/release
+          version=$(python3 -c "import json;print(json.load(open('$dir/output-metadata.json'))['elements'][0]['versionName'])")
+          [ -n "$version" ]
+          mv "$dir/app-release.apk" "$dir/mrowser-$version.apk"
+          ls -1 "$dir"/*.apk
+          echo "path=$dir/mrowser-$version.apk" >> "$GITHUB_OUTPUT"
       - name: Attach APK to the release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: ${{ steps.apk.outputs.path }}
