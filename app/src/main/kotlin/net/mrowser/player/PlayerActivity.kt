@@ -67,6 +67,16 @@ class PlayerActivity : Activity() {
     /** Set while a scrub pauses playback, so the release can put it back. */
     private var playWhenReadyBeforeHold = true
 
+    /**
+     * Where this gesture points, [SeekPreview.NONE] when none is running.
+     *
+     * Authoritative: the presses of a run accumulate onto it and it is never re-read from the
+     * player, whose position lags a resolved seek by however far the stream snapped the request
+     * to a segment boundary. [targetAtMs] expires it once the run is over.
+     */
+    private var targetMs = SeekPreview.NONE
+    private var targetAtMs = 0L
+
     /** Whether the OK press in progress is a play/pause rather than a button activation. */
     private var okIsOurs = false
 
@@ -252,12 +262,7 @@ class PlayerActivity : Activity() {
                 seekDown = 0
                 val s = settings.get()
                 val amount = (if (forward) s.seekForwardSec else s.seekBackSec) * 1_000L
-                // One step on the bar's preview, which accumulates across presses. The commit is
-                // re-armed rather than immediate, so a run of presses costs one seek between
-                // them instead of one each that the next discards.
-                scrubBy(if (forward) amount else -amount)
-                seekHandler.removeCallbacks(commitScrubAction)
-                seekHandler.postDelayed(commitScrubAction, SeekGesture.COMMIT_DELAY_MS)
+                stepSeek(if (forward) amount else -amount)
                 true
             }
             SeekGesture.Decision.EndHold -> {
@@ -292,18 +297,31 @@ class PlayerActivity : Activity() {
         lastControlsRefreshAt = 0L
         playWhenReadyBeforeHold = p.playWhenReady
         p.playWhenReady = false
+        // Start this hold from wherever the gesture already points — a hold that began as a run
+        // of presses continues from their target, not from the position the stream resolved to.
+        if (!SeekPreview.targetStillValid(System.currentTimeMillis() - targetAtMs)) {
+            targetMs = SeekPreview.NONE
+        }
+        if (targetMs == SeekPreview.NONE) targetMs = p.currentPosition
+        // Seed the bar's base before the first scrub step: with `scrubbing` still false it would
+        // otherwise base that step on the polled player position, which lags a resolved seek.
+        (timeBar as? DefaultTimeBar)?.setPosition(targetMs)
         playerView?.showController()
         seekHandler.post(scrubTick)
     }
 
-    /** Advances the bar's preview only — the player is told once, on release. */
+    /** Advances our target and the bar's preview; the player is told once, on release. */
     private val scrubTick = object : Runnable {
         override fun run() {
             val p = player ?: return
             val step = SeekPreview.holdStepMs(
                 p.duration, SeekGesture.TICK_MS, settings.get().seekSpeed.traverseMs
             )
-            scrubBy(if (holdForward) step else -step)
+            val delta = if (holdForward) step else -step
+            // Our target is authoritative; the bar is shown from it, never read back into it.
+            targetMs = SeekPreview.step(targetMs, p.currentPosition, delta, p.duration)
+            targetAtMs = System.currentTimeMillis()
+            scrubBy(delta)
             // The hide timer is driven by input PlayerView receives, and it never sees these
             // keys — so without this the controls would vanish mid-scrub past the 3s timeout.
             // showController() while fully visible only resets that timer (its uxState is
@@ -317,63 +335,93 @@ class PlayerActivity : Activity() {
         }
     }
 
-    /** Ends a hold: stop ticking, commit the bar's preview, and restore playback. */
+    /** Ends a hold: stop ticking, seek to the target once, and restore playback. */
     private fun endHold() {
         stopHoldTimers()
         seekDown = 0
         val wasScrubbing = seekHolding
         seekHolding = false
-        commitScrub()
-        if (wasScrubbing) player?.playWhenReady = playWhenReadyBeforeHold
+        if (wasScrubbing) {
+            commitHold()
+            player?.playWhenReady = playWhenReadyBeforeHold
+        }
     }
 
     private fun stopHoldTimers() {
         seekHandler.removeCallbacks(beginHold)
         seekHandler.removeCallbacks(scrubTick)
-        seekHandler.removeCallbacks(commitScrubAction)
     }
 
-    private val commitScrubAction = Runnable { commitScrub() }
+    /**
+     * One short press: advance this gesture's own target by [deltaMs] and seek there.
+     *
+     * The target is **ours**, carried across the presses of a run (`SeekPreview.step`), and the
+     * player is never read back mid-run. It used to be read — first from `currentPosition`, then
+     * from `DefaultTimeBar`'s `position` field, which `PlayerControlView` polls out of the
+     * player — and both lag the same way: a `seekTo` is masked to the requested position, but
+     * the internal player acks the **resolved** one, and an adaptive stream resolves to a
+     * segment boundary, several seconds behind. Each press then re-based on that pulled-back
+     * value and lost the difference, so a run stalled and could even net out backwards.
+     *
+     * The seek is issued at once rather than deferred: it is the only feedback a short press
+     * gives (the controls stay hidden, by design), and a superseded seek costs the player
+     * nothing — the target is already correct whether or not the previous one landed.
+     */
+    private fun stepSeek(deltaMs: Long) {
+        val p = player ?: return
+        if (deltaMs == 0L) return
+        val now = System.currentTimeMillis()
+        // A target older than its run has nothing to do with where the video is now.
+        if (!SeekPreview.targetStillValid(now - targetAtMs)) targetMs = SeekPreview.NONE
+        targetMs = SeekPreview.step(targetMs, p.currentPosition, deltaMs, p.duration)
+        targetAtMs = now
+        p.seekTo(targetMs)
+    }
 
     /**
-     * Move the time bar's **own** preview by [deltaMs], without telling the player.
+     * Move the time bar's **own** preview by [deltaMs] — for a hold, which does show it.
      *
-     * `DefaultTimeBar` already implements exactly the model this needs: a key press enters
-     * `scrubbing` and moves `scrubPosition`, `update()` draws `scrubbing ? scrubPosition :
-     * position`, and `PlayerControlView`'s `onScrubStop` listener performs the single seek — on
-     * `DPAD_CENTER`, or 1s after the last press. So the preview, its accumulation across presses
-     * and its commit are all media3's, through public API, with no second copy of the state here.
+     * Within one hold this stays in step with [targetMs] without reading anything back:
+     * `DefaultTimeBar.scrubIncrementally` bases each step on `scrubPosition` once `scrubbing` is
+     * set, which only this ticker moves, and both clamp at the same bounds. The first tick is
+     * the exception — with `scrubbing` still false the bar would base it on the polled player
+     * position — so [beginHold] seeds `setPosition` immediately before it.
      *
-     * Two things had to be supplied. The bar's own increment is `duration / 20` — **5m09s per
-     * press on a 1h43m film** — so `setKeyTimeIncrement` is set to this delta first. And its
-     * `onKeyDown` is the only public way into `scrubbing`, so the step is applied as a
-     * synthesised press. Writing `setPosition` instead does not work: `updateProgress` calls it
-     * unconditionally from its own polling loop (it consults `scrubbing` only for the position
-     * *label*) and keeps polling while paused, so a preview written that way is pulled back to
-     * the player's position within a frame.
+     * Two things media3 does not supply. The bar's own increment is `duration / 20` — **5m09s
+     * per press on a 1h43m film** — so `setKeyTimeIncrement` is set first. And `onKeyDown` is
+     * the only public way into `scrubbing`; `setPosition` cannot serve, because `updateProgress`
+     * calls it unconditionally from its own polling loop (it consults `scrubbing` only for the
+     * position *label*) and keeps polling while paused.
      *
-     * Per-tick seeking is avoided by leaving `time_bar_scrubbing_enabled` off: with it on,
-     * `onScrubMove` seeks on **every** move, which is the stall this redesign is fixing.
+     * Returns false when the bar refused the step — `onKeyDown` does nothing at all unless
+     * `isEnabled()`, which `PlayerControlView` ties to `COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM`. A
+     * swallowed press that moved nothing is exactly the "sometimes does nothing" this had, so
+     * the caller falls back rather than assuming it worked.
      */
-    private fun scrubBy(deltaMs: Long) {
-        val bar = timeBar as? DefaultTimeBar ?: return
-        if (deltaMs == 0L) return
+    private fun scrubBy(deltaMs: Long): Boolean {
+        val bar = timeBar as? DefaultTimeBar ?: return false
+        if (deltaMs == 0L || !bar.isEnabled) return false
         bar.setKeyTimeIncrement(abs(deltaMs))
         val code = if (deltaMs > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
-        bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
+        return bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
     }
 
     /**
-     * Commit the bar's preview now, rather than waiting out its 1s idle timer.
+     * Commit a hold: seek to our own target and clear the bar's scrub state.
      *
-     * `DPAD_CENTER` is `DefaultTimeBar`'s public "commit the scrub" input, and the key never
-     * reaches the bar on its own — OK is play/pause here. A press with no scrub in progress
-     * does nothing, so this is safe to call unconditionally.
+     * The seek is ours, not the bar's `onScrubStop`, so the position committed is the one this
+     * gesture accumulated even if the bar's own scrub diverged or was refused. `DPAD_CENTER` is
+     * the bar's public "stop scrubbing" input (it also makes `onScrubStop` seek to the same
+     * place, which is harmless) and the key never reaches it on its own — OK is play/pause here.
      */
-    private fun commitScrub() {
-        val bar = timeBar as? DefaultTimeBar ?: return
-        val code = KeyEvent.KEYCODE_DPAD_CENTER
-        bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
+    private fun commitHold() {
+        val target = targetMs
+        val bar = timeBar as? DefaultTimeBar
+        if (bar != null && bar.isEnabled) {
+            val code = KeyEvent.KEYCODE_DPAD_CENTER
+            bar.onKeyDown(code, KeyEvent(KeyEvent.ACTION_DOWN, code))
+        }
+        if (target != SeekPreview.NONE) player?.seekTo(target)
     }
 
     private fun controlsVisible(): Boolean = playerView?.isControllerFullyVisible == true

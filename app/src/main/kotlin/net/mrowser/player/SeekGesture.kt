@@ -23,15 +23,6 @@ object SeekGesture {
     /** How long left/right must be held before it scrubs instead of stepping once. */
     const val HOLD_MS = 400L
 
-    /**
-     * How long after the last short press the accumulated preview is committed to the player.
-     *
-     * Presses inside this window accumulate and cost one seek between them, so holding down a
-     * few presses to skip an intro no longer queues a seek each — every one of which would make
-     * the stream locate and decode a segment the next press discards. blbl uses 450ms.
-     */
-    const val COMMIT_DELAY_MS = 450L
-
     /** How often a scrub advances its preview. Only the UI moves at this rate. */
     const val TICK_MS = 40L
 
@@ -45,8 +36,8 @@ object SeekGesture {
          *  system's repeat rate is vendor-specific and would otherwise fire a burst of seeks. */
         Ignore,
 
-        /** Released before the threshold: advance the preview by the configured amount and
-         *  re-arm the commit timer. The player is not told until the window expires. */
+        /** Released before the threshold: advance the gesture's target by the configured amount
+         *  and seek there. The controls stay hidden, so the seek is the only feedback. */
         Step,
 
         /** Released after the scrub started: stop the ticker and commit the preview — one seek

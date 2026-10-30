@@ -20,8 +20,8 @@ android {
         applicationId = "net.mrowser"
         minSdk = 23
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.5.4"
+        versionCode = 15
+        versionName = "1.5.5"
     }
 
     signingConfigs {
